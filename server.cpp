@@ -37,104 +37,6 @@ struct snex_shared {
     struct snex_shared_v1   v1;
 };
 
-bool xpipc_shm_create(const char *name, size_t size, struct xpipc_shm *shm) {
-#if XPIPC_WINDOWS
-    strncpy(shm->name, name, 255);
-    shm->size = size;
-    shm->hMapFile = NULL;
-    shm->mapped = NULL;
-
-    shm->hMapFile = CreateFileMapping(
-        INVALID_HANDLE_VALUE,
-        NULL,
-        PAGE_READWRITE,
-        shm->size >> 32,
-        shm->size & 0xFFFFFFFF,
-        shm->name
-    );
-
-    if (shm->hMapFile == NULL) {
-        sprintf(shm->last_error, "err %08lx", GetLastError());
-        return false;
-    }
-
-    shm->mapped = MapViewOfFile(
-        shm->hMapFile,   // handle to map object
-        FILE_MAP_ALL_ACCESS, // read/write permission
-        0,
-        0,
-        shm->size
-    );
-    if (shm->mapped == NULL) {
-        sprintf(shm->last_error, "err %08lx", GetLastError());
-
-        CloseHandle(shm->hMapFile);
-
-        shm->hMapFile = NULL;
-        return false;
-    }
-
-    return true;
-#elif XPIPC_UNIX
-    strncpy(shm->name, name, 255);
-    shm->size = size;
-    shm->fd = -1;
-    shm->mapped = NULL;
-
-    shm->fd = shm_open(shm->name, O_RDWR | O_CREAT | O_EXCL, 0666);
-    if (shm->fd < 0) {
-        perror("shm_open");
-        return false;
-    }
-
-    if (ftruncate(shm->fd, shm->size) < 0) {
-        perror("ftruncate");
-        return false;
-    }
-
-    shm->mapped = mmap(
-        NULL,
-        shm->size,
-        PROT_READ | PROT_WRITE,
-        MAP_SHARED,
-        shm->fd,
-        0
-    );
-    if (shm->mapped == MAP_FAILED) {
-        perror("mmap");
-        shm->mapped = NULL;
-        close(shm->fd);
-        shm->fd = -1;
-        return false;
-    }
-
-    return true;
-#else
-#  error Unsupported platform
-#endif
-}
-
-bool xpipc_shm_close(struct xpipc_shm *shm) {
-#if XPIPC_WINDOWS
-    UnmapViewOfFile(shm->mapped);
-    shm->mapped = NULL;
-
-    CloseHandle(shm->hMapFile);
-    shm->hMapFile = NULL;
-
-    return true;
-#elif XPIPC_UNIX
-    munmap(shm->mapped);
-    shm->mapped = NULL;
-
-    close(shm->fd);
-    shm->fd = -1;
-
-    shm_unlink(shm->name);
-
-    return true;
-#endif
-}
 
 int main() {
     struct xpipc_shm shm;
@@ -148,7 +50,10 @@ int main() {
     snex->version = 1;
     snex->v1.last_client_idx = -1;
 
-    xpipc_shm_close(&shm);
+    if (!xpipc_shm_close(&shm)) {
+        printf("%s\n", shm.last_error);
+        return 1;
+    }
 
     return 0;
 }
