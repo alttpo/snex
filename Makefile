@@ -1,7 +1,9 @@
+CFLAGS+=-std=c++14
+
 .cpp.o:
 	$(CC) $(CFLAGS) -c $<
 
-all: client server
+all: server client
 
 server: server.o
 	$(CC) server.o -o $@
