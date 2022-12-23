@@ -22,7 +22,7 @@ struct snex_ppu_screen {
 };
 
 struct snex_shared_v1 {
-    _Atomic(int32_t)        ppu_ready;
+    _Atomic(int32_t)        sync_state;
     struct snex_ppu_screen  ppu_main;
     struct snex_ppu_screen  ppu_sub;
 };
