@@ -8,15 +8,16 @@ else
   EXESUFFIX=
   RM?=rm -f
   MV?=mv -f
+  LDFLAGS+=-lrt -pthread
 endif
 
 all: server client
 
 server$(EXESUFFIX): server.o xpipc.o
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $^ -o $@ $(LDFLAGS)
 
 client$(EXESUFFIX): client.o xpipc.o
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $^ -o $@ $(LDFLAGS)
 
 server.o: server.cpp xpipc.h xplat.h snex.h
 

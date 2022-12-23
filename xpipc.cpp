@@ -2,6 +2,11 @@
 #include "xpipc.h"
 #include <cstdio>
 
+#if XPIPC_UNIX
+#include <cerrno>
+#include <semaphore.h>
+#endif
+
 static void xpipc_set_last_error(char *last_error) {
 #if XPIPC_WINDOWS
     sprintf(last_error, "err %08lx", GetLastError());
@@ -26,7 +31,7 @@ static void xpipc_set_name(const char *name, char *dest) {
     }
     //printf("%s\n", dest);
 #else
-    strncpy(shm->name, name, 255);
+    strncpy(dest, name, 255);
 #endif
 }
 
@@ -197,7 +202,7 @@ bool xpipc_shm_close(struct xpipc_shm *shm) {
 
     return true;
 #elif XPIPC_UNIX
-    xpipc_clear_last_error(ev->last_error);
+    xpipc_clear_last_error(shm->last_error);
     if (munmap(shm->mapped, shm->size)) {
         xpipc_set_last_error(shm->last_error);
         return false;
@@ -231,6 +236,16 @@ bool xpipc_event_create(const char *name, struct xpipc_event *ev) {
 
     return true;
 #elif XPIPC_UNIX
+    xpipc_set_name(name, ev->name);
+
+    xpipc_clear_last_error(ev->last_error);
+    ev->sem = sem_open(ev->name, O_RDWR | O_CREAT | O_EXCL, 0666, 0);
+    if (ev->sem == SEM_FAILED) {
+        xpipc_set_last_error(ev->last_error);
+        return false;
+    }
+
+    return true;
 #endif
 }
 
@@ -251,6 +266,16 @@ bool xpipc_event_open(const char *name, struct xpipc_event *ev) {
 
     return true;
 #elif XPIPC_UNIX
+    xpipc_set_name(name, ev->name);
+
+    xpipc_clear_last_error(ev->last_error);
+    ev->sem = sem_open(ev->name, O_RDWR, 0666, 0);
+    if (ev->sem == SEM_FAILED) {
+        xpipc_set_last_error(ev->last_error);
+        return false;
+    }
+
+    return true;
 #endif
 }
 
@@ -263,13 +288,9 @@ bool xpipc_event_set(struct xpipc_event *ev) {
     }
 
     return true;
-#endif
-}
-
-bool xpipc_event_reset(struct xpipc_event *ev) {
-#if XPIPC_WINDOWS
+#elif XPIPC_UNIX
     xpipc_clear_last_error(ev->last_error);
-    if (!ResetEvent(ev->hEvent)) {
+    if (sem_post(ev->sem) != 0) {
         xpipc_set_last_error(ev->last_error);
         return false;
     }
@@ -300,6 +321,18 @@ bool xpipc_event_wait(struct xpipc_event *ev, unsigned long millis) {
     }
 
     return false;
+#elif XPIPC_UNIX
+    xpipc_clear_last_error(ev->last_error);
+
+    struct timespec tspec;
+    tspec.tv_sec = 0L;
+    tspec.tv_nsec = (long)millis * 1000000;
+    if (sem_timedwait(ev->sem, &tspec) != 0) {
+        xpipc_set_last_error(ev->last_error);
+        return false;
+    }
+
+    return true;
 #endif
 }
 
@@ -311,6 +344,14 @@ bool xpipc_event_close(const char *name, struct xpipc_event *ev) {
         return false;
     }
     ev->hEvent = NULL;
+
+    return true;
+#elif XPIPC_UNIX
+    xpipc_clear_last_error(ev->last_error);
+    if (sem_close(ev->sem) != 0) {
+        xpipc_set_last_error(ev->last_error);
+        return false;
+    }
 
     return true;
 #endif

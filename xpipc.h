@@ -14,6 +14,7 @@
 #  include <sys/mman.h>
 #  include <sys/stat.h>
 #  include <unistd.h>
+#  include <semaphore.h>
 #else
 #  error Unsupported platform
 #endif
@@ -52,6 +53,14 @@ struct xpipc_shm {
 
     int     fd;
     void*   mapped;
+
+    char    last_error[4096];
+};
+
+struct xpipc_event {
+    char    name[256];
+
+    sem_t   *sem;
 
     char    last_error[4096];
 };
