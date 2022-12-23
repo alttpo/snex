@@ -13,22 +13,18 @@ const int snex_ppu_screen_size = 1024*1024;
 struct snex_ppu_screen {
     // 15-bit BGR color, MSB = 1 to override
     uint16_t color[snex_ppu_screen_size];
-    // 0000 ppll
-    //      ||||
-    //      ||\+-- layer    (0=BG1, 1=BG2, 2=BG3, 3=OBJ)
-    //      \+---- priority (0..1 for BG1-3, 0..3 for OBJ)
-    uint8_t  layer_prio[snex_ppu_screen_size];
-};
-
-struct snex_client {
-    _Atomic(int32_t)        ppu_frames_ttl;
-    struct snex_ppu_screen  ppu_main;
-    struct snex_ppu_screen  ppu_sub;
+    // 00pp olll
+    //   || ||||
+    //   || |\++-- layer      (0=BG1, 1=BG2, 2=BG3, 3=BG4, 4=OAM, 5..7=undefined)
+    //   || \----- under/over (0 = render underneath equivalent PPU layer/priority, 1 = render over equivalent PPU layer/priority)
+    //   \+------- priority   (0..1 for BG1-3, 0..3 for OBJ)
+    uint8_t  attrs[snex_ppu_screen_size];
 };
 
 struct snex_shared_v1 {
-    _Atomic(int32_t)    last_client_idx;
-    struct snex_client  clients[1];
+    _Atomic(int32_t)        ppu_ready;
+    struct snex_ppu_screen  ppu_main;
+    struct snex_ppu_screen  ppu_sub;
 };
 
 struct snex_shared {
@@ -36,7 +32,6 @@ struct snex_shared {
 
     struct snex_shared_v1   v1;
 };
-
 
 int main() {
     struct xpipc_shm shm;
@@ -48,7 +43,16 @@ int main() {
 
     struct snex_shared *snex = (struct snex_shared *)shm.mapped;
     snex->version = 1;
-    snex->v1.last_client_idx = -1;
+    snex->v1.ppu_ready = 0;
+
+    for (;;) {
+        int32_t ready = 1;
+        if (snex->v1.ppu_ready.compare_exchange_weak(ready, 0)) {
+            printf("screen ready\n");
+        }
+
+        sleep(16);
+    }
 
     if (!xpipc_shm_close(&shm)) {
         printf("%s\n", shm.last_error);
