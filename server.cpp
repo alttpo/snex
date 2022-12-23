@@ -44,7 +44,7 @@ int main() {
 
         // reset state to IDLE:
         printf("present\n");
-        usleep(14000);
+        usleep(1000);
     }
 
     if (!xpipc_shm_close(&shm)) {
