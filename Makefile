@@ -1,4 +1,4 @@
-CFLAGS+=-std=c++14
+CFLAGS+=-std=c++14 -D_XOPEN_SOURCE
 
 ifdef COMSPEC
   EXESUFFIX?=.exe

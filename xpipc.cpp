@@ -5,12 +5,20 @@
 #if XPIPC_UNIX
 #include <cerrno>
 #include <semaphore.h>
+#include <ctime>
 #endif
 
 static void xpipc_set_last_error(char *last_error) {
 #if XPIPC_WINDOWS
     sprintf(last_error, "err %08lx", GetLastError());
 #elif XPIPC_UNIX
+    if (errno == ETIMEDOUT) {
+        strcpy(last_error, "timeout");
+        return;
+    } else if (errno == EINVAL) {
+        strcpy(last_error, "invalid argument");
+        return;
+    }
     strerror_r(errno, last_error, 4096);
 #endif
 }
@@ -81,6 +89,8 @@ bool xpipc_shm_create(const char *name, size_t size, struct xpipc_shm *shm) {
     shm->mapped = NULL;
 
     xpipc_clear_last_error(shm->last_error);
+    shm_unlink(shm->name);
+
     shm->fd = shm_open(shm->name, O_RDWR | O_CREAT | O_EXCL, 0666);
     if (shm->fd < 0) {
         xpipc_set_last_error(shm->last_error);
@@ -239,6 +249,8 @@ bool xpipc_event_create(const char *name, struct xpipc_event *ev) {
     xpipc_set_name(name, ev->name);
 
     xpipc_clear_last_error(ev->last_error);
+    sem_unlink(ev->name);
+
     ev->sem = sem_open(ev->name, O_RDWR | O_CREAT | O_EXCL, 0666, 0);
     if (ev->sem == SEM_FAILED) {
         xpipc_set_last_error(ev->last_error);
@@ -324,10 +336,24 @@ bool xpipc_event_wait(struct xpipc_event *ev, unsigned long millis) {
 #elif XPIPC_UNIX
     xpipc_clear_last_error(ev->last_error);
 
-    struct timespec tspec;
-    tspec.tv_sec = 0L;
-    tspec.tv_nsec = (long)millis * 1000000;
-    if (sem_timedwait(ev->sem, &tspec) != 0) {
+    // determine deadline:
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
+        xpipc_set_last_error(ev->last_error);
+        return false;
+    }
+
+    ts.tv_nsec += (long)millis * 1000000L;
+    // normalize nsec range:
+    while (ts.tv_nsec >= 1000000000L) {
+        ++(ts.tv_sec);
+        ts.tv_nsec -= 1000000000L;
+    }
+
+    int s;
+    while ((s = sem_timedwait(ev->sem, &ts)) == -1 && errno == EINTR)
+        continue;
+    if (s == -1) {
         xpipc_set_last_error(ev->last_error);
         return false;
     }
