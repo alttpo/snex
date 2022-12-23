@@ -18,7 +18,9 @@ server$(EXESUFFIX): server.o xpipc.o
 client$(EXESUFFIX): client.o xpipc.o
 	$(CC) $(CFLAGS) $^ -o $@
 
-server.o: server.cpp xpipc.h xplat.h
+server.o: server.cpp xpipc.h xplat.h snex.h
+
+client.o: client.cpp xpipc.h xplat.h snex.h
 
 xpipc.o: xpipc.cpp xpipc.h xplat.h
 

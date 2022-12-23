@@ -50,6 +50,7 @@ struct xpipc_shm {
 #endif
 
 bool xpipc_shm_create(const char *name, size_t size, struct xpipc_shm *shm);
+bool xpipc_shm_open(const char *name, size_t size, struct xpipc_shm *shm);
 bool xpipc_shm_close(struct xpipc_shm *shm);
 
 #endif //SNEX_XPIPC_H
