@@ -10,6 +10,19 @@ int main(void) {
         return 1;
     }
 
+    struct xpipc_event ev_server_ready;
+    struct xpipc_event ev_client_ready;
+
+    if (!xpipc_event_open("/snex-server-ready", &ev_server_ready)) {
+        printf("%s\n", ev_server_ready.last_error);
+        return 1;
+    }
+
+    if (!xpipc_event_open("/snex-client-ready", &ev_client_ready)) {
+        printf("%s\n", ev_client_ready.last_error);
+        return 1;
+    }
+
     struct snex_shared *snex = (struct snex_shared *) shm.mapped;
     if (snex->version != 1) {
         printf("error; snex version != 1; got %d\n", snex->version);
@@ -18,22 +31,19 @@ int main(void) {
 
     for (;;) {
         // wait for NMI syn:
-        int32_t expected_state = 1;
-        if (!snex->v1.sync_state.compare_exchange_strong(expected_state, 2)) {
-            usleep(1000);
+        if (!xpipc_event_wait(&ev_server_ready, 17)) {
+            printf("wait: %s\n", ev_server_ready.last_error);
             continue;
         }
 
         printf("recv NMI syn\n");
 
         // ack:
-        for (int n = 0; n < 10000; n++) {
-            expected_state = 3;
-            if (snex->v1.sync_state.compare_exchange_strong(expected_state, 4)) {
-                printf("send NMI syn-ack\n");
-                break;
-            }
+        if (!xpipc_event_set(&ev_client_ready)) {
+            printf("set:  %s\n", ev_client_ready.last_error);
+            continue;
         }
+        printf("send NMI ack\n");
     }
 
     printf("done\n");

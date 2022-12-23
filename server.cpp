@@ -11,6 +11,19 @@ int main() {
         return 1;
     }
 
+    struct xpipc_event ev_server_ready;
+    struct xpipc_event ev_client_ready;
+
+    if (!xpipc_event_create("/snex-server-ready", &ev_server_ready)) {
+        printf("%s\n", ev_server_ready.last_error);
+        return 1;
+    }
+
+    if (!xpipc_event_create("/snex-client-ready", &ev_client_ready)) {
+        printf("%s\n", ev_client_ready.last_error);
+        return 1;
+    }
+
     struct snex_shared *snex = (struct snex_shared *)shm.mapped;
     snex->version = 1;
     snex->v1.sync_state = 0;
@@ -18,23 +31,18 @@ int main() {
     for (;;) {
         // switch to state 1 NMI-sync:
         printf("send NMI syn\n");
-        snex->v1.sync_state.store(1);
-        usleep(1000);
-
-        // expect NMI acknowledged:
-        int32_t expected_state = 2;
-        for (int n = 0; n < 10000; n++) {
-            expected_state = 2;
-            if (snex->v1.sync_state.compare_exchange_strong(expected_state, 3)) {
-                printf("recv NMI syn-ack\n");
-                break;
-            }
+        if (!xpipc_event_set(&ev_server_ready)) {
+            printf("set:  %s\n", ev_server_ready.last_error);
+            continue;
         }
 
-        usleep(1000);
+        // expect NMI acknowledged:
+        if (!xpipc_event_wait(&ev_client_ready, 14)) {
+            printf("wait: %s\n", ev_client_ready.last_error);
+            continue;
+        }
 
         // reset state to IDLE:
-        snex->v1.sync_state.store(0);
         printf("present\n");
         usleep(14000);
     }
